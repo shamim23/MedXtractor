@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Block } from '@/types/blocks';
 import { useWorkspace } from '@/store/useWorkspace';
-import { GripVertical, ChevronRight, Check } from 'lucide-react';
+import { GripVertical, ChevronRight, Check, MoreHorizontal } from 'lucide-react';
 
 interface BlockItemProps {
   block: Block;
@@ -12,6 +12,7 @@ interface BlockItemProps {
   focusBlockId: string | null;
   onFocused: () => void;
   index: number;
+  onContextMenu: (e: React.MouseEvent) => void;
 }
 
 export const BlockItem: React.FC<BlockItemProps> = ({
@@ -22,6 +23,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
   onDragStart,
   focusBlockId,
   onFocused,
+  onContextMenu,
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const { updateBlock } = useWorkspace();
@@ -29,14 +31,13 @@ export const BlockItem: React.FC<BlockItemProps> = ({
   // Set initial content on mount only
   useEffect(() => {
     if (ref.current && block.content && !ref.current.textContent) {
-      ref.current.textContent = block.content;
+      ref.current.innerHTML = block.content;
     }
   }, []);
 
   useEffect(() => {
     if (focusBlockId === block.id && ref.current) {
       ref.current.focus();
-      // Move cursor to end
       const range = document.createRange();
       const sel = window.getSelection();
       range.selectNodeContents(ref.current);
@@ -49,7 +50,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
 
   const handleInput = () => {
     if (ref.current) {
-      onContentChange(ref.current.textContent || '');
+      onContentChange(ref.current.innerHTML || '');
     }
   };
 
@@ -59,6 +60,12 @@ export const BlockItem: React.FC<BlockItemProps> = ({
         <div className="drag-handle w-6 flex-shrink-0 flex justify-center" draggable onDragStart={onDragStart}>
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
+        <button
+          onClick={onContextMenu}
+          className="drag-handle w-5 flex-shrink-0 flex justify-center"
+        >
+          <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+        </button>
         <hr className="flex-1 border-border" />
       </div>
     );
@@ -92,14 +99,29 @@ export const BlockItem: React.FC<BlockItemProps> = ({
     code: 'Code',
   };
 
+  const colorStyle: React.CSSProperties = {};
+  if (block.color) colorStyle.color = block.color;
+  if (block.bgColor) colorStyle.backgroundColor = block.bgColor;
+
   return (
-    <div className="block-wrapper group flex items-start gap-1 py-[2px] px-1">
-      <div
-        className="drag-handle w-6 flex-shrink-0 flex justify-center pt-1 cursor-grab active:cursor-grabbing"
-        draggable
-        onDragStart={onDragStart}
-      >
-        <GripVertical className="h-4 w-4 text-muted-foreground" />
+    <div
+      className="block-wrapper group flex items-start gap-1 py-[2px] px-1 rounded"
+      style={block.bgColor ? { backgroundColor: block.bgColor } : undefined}
+    >
+      <div className="drag-handle flex-shrink-0 flex items-center gap-0 pt-1">
+        <button
+          onClick={onContextMenu}
+          className="w-5 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+        </button>
+        <div
+          className="w-5 flex justify-center cursor-grab active:cursor-grabbing"
+          draggable
+          onDragStart={onDragStart}
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </div>
       </div>
 
       {block.type === 'bulleted-list' && (
@@ -107,9 +129,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
       )}
 
       {block.type === 'numbered-list' && (
-        <span className="flex-shrink-0 mt-[2px] mr-1 text-sm text-muted-foreground min-w-[20px]">
-          {/* index is visual only */}
-        </span>
+        <span className="flex-shrink-0 mt-[2px] mr-1 text-sm text-muted-foreground min-w-[20px]" />
       )}
 
       {block.type === 'todo' && (
@@ -144,6 +164,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
         className={`block-content flex-1 min-h-[1.5em] outline-none ${blockStyles[block.type] || ''} ${
           block.type === 'todo' && block.checked ? 'line-through text-muted-foreground' : ''
         }`}
+        style={block.color ? { color: block.color } : undefined}
         data-placeholder={placeholder[block.type] || "Type '/' for commands..."}
         onInput={handleInput}
         onKeyDown={onKeyDown}

@@ -19,6 +19,7 @@ interface WorkspaceState {
   deleteBlock: (pageId: string, blockId: string) => void;
   updateBlock: (pageId: string, blockId: string, updates: Partial<Block>) => void;
   moveBlock: (pageId: string, blockId: string, targetIndex: number) => void;
+  duplicateBlock: (pageId: string, blockId: string) => string;
   getActivePage: () => Page | undefined;
 }
 
@@ -134,6 +135,23 @@ export const useWorkspace = create<WorkspaceState>()(
             return { ...p, blocks, updatedAt: Date.now() };
           }),
         }));
+      },
+
+      duplicateBlock: (pageId, blockId) => {
+        const newId = crypto.randomUUID();
+        set((s) => ({
+          pages: s.pages.map((p) => {
+            if (p.id !== pageId) return p;
+            const idx = p.blocks.findIndex((b) => b.id === blockId);
+            if (idx === -1) return p;
+            const original = p.blocks[idx];
+            const duplicate: Block = { ...original, id: newId };
+            const newBlocks = [...p.blocks];
+            newBlocks.splice(idx + 1, 0, duplicate);
+            return { ...p, blocks: newBlocks, updatedAt: Date.now() };
+          }),
+        }));
+        return newId;
       },
 
       getActivePage: () => {
