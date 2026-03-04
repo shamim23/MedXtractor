@@ -26,6 +26,13 @@ export const BlockItem: React.FC<BlockItemProps> = ({
   const ref = useRef<HTMLDivElement>(null);
   const { updateBlock } = useWorkspace();
 
+  // Set initial content on mount only
+  useEffect(() => {
+    if (ref.current && block.content && !ref.current.textContent) {
+      ref.current.textContent = block.content;
+    }
+  }, []);
+
   useEffect(() => {
     if (focusBlockId === block.id && ref.current) {
       ref.current.focus();
@@ -140,7 +147,6 @@ export const BlockItem: React.FC<BlockItemProps> = ({
         data-placeholder={placeholder[block.type] || "Type '/' for commands..."}
         onInput={handleInput}
         onKeyDown={onKeyDown}
-        dangerouslySetInnerHTML={{ __html: block.content }}
       />
     </div>
   );
