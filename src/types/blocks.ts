@@ -19,6 +19,8 @@ export interface Block {
   checked?: boolean;
   children?: Block[];
   collapsed?: boolean;
+  color?: string;
+  bgColor?: string;
 }
 
 export interface Page {
