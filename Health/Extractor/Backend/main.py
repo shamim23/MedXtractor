@@ -1,128 +1,112 @@
+"""FastAPI entry point with Transcript Crew integration."""
+
 import os
-import uuid
-import json
-from datetime import datetime
-import whisper
+import sys
+
+# Add src to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
 from fastapi import FastAPI, HTTPException, BackgroundTasks
-from pydantic import BaseModel
-from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import NoTranscriptFound, TranscriptsDisabled
-import yt_dlp
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from typing import Optional
 
-# Ensure transcripts directory exists
-TRANSCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "transcripts")
-os.makedirs(TRANSCRIPTS_DIR, exist_ok=True)
+from transcript_crew.crew import TranscriptCrew
+from transcript_crew.tools.transcript_tool import extract_transcript
 
-app = FastAPI(title="Video Transcript Extractor")
+app = FastAPI(
+    title="Video Transcript Extractor with CrewAI",
+    description="Extract and analyze video transcripts using AI agents",
+    version="0.2.0"
+)
 
-# Load Whisper Model (Base is fast and relatively accurate)
-# Options: 'tiny', 'base', 'small', 'medium', 'large'
-model = whisper.load_model("base")
 
 class URLRequest(BaseModel):
-    url: str
+    url: str = Field(..., description="URL of the video to process")
 
-def cleanup(file_path: str):
-    """Deletes the temporary audio file after processing."""
-    if os.path.exists(file_path):
-        os.remove(file_path)
 
-def save_transcript(source: str, url: str, transcript: str, video_id: str = None) -> str:
-    """Saves transcript to a file in the transcripts folder."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    if video_id:
-        filename = f"{video_id}_{timestamp}.json"
-    else:
-        unique_id = uuid.uuid4().hex[:8]
-        filename = f"{unique_id}_{timestamp}.json"
-    
-    file_path = os.path.join(TRANSCRIPTS_DIR, filename)
-    
-    data = {
-        "source": source,
-        "url": url,
-        "video_id": video_id,
-        "timestamp": datetime.now().isoformat(),
-        "transcript": transcript
-    }
-    
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    
-    return file_path
+class TranscriptRequest(BaseModel):
+    transcript: str = Field(..., description="Direct transcript text to analyze")
 
-def download_audio(url: str) -> str:
-    """Downloads audio from a URL using yt-dlp."""
-    filename = f"temp_audio_{uuid.uuid4().hex}"
-    ydl_opts = {
-        'format': 'm4a/bestaudio/best',
-        'outtmpl': f'{filename}.%(ext)s',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        'quiet': True,
-        'no_warnings': True,
-    }
-    
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        return f"{filename}.mp3"
 
-def get_youtube_id(url: str):
-    """Extracts Video ID from various YouTube URL formats."""
-    with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-        info = ydl.extract_info(url, download=False)
-        return info.get('id')
+class AnalysisResponse(BaseModel):
+    source: str
+    video_id: Optional[str] = None
+    transcript: str
+    saved_to: Optional[str] = None
+    analysis: Optional[str] = None
 
-@app.post("/transcript")
-async def extract_transcript(request: URLRequest, background_tasks: BackgroundTasks):
-    url = request.url
-    
-    # --- STRATEGY 1: Try YouTube Native Transcript ---
-    if "youtube.com" in url or "youtu.be" in url:
-        try:
-            video_id = get_youtube_id(url)
-            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-            full_text = " ".join([t['text'] for t in transcript_list])
-            # Save transcript to file
-            file_path = save_transcript("youtube_api", url, full_text, video_id)
-            
-            return {
-                "source": "youtube_api",
-                "video_id": video_id,
-                "transcript": full_text,
-                "saved_to": file_path
-            }
-        except (NoTranscriptFound, TranscriptsDisabled, Exception):
-            # If native transcript fails, fall back to Whisper (Strategy 2)
-            pass
 
-    # --- STRATEGY 2: AI Transcription (Facebook, Reels, or YT without captions) ---
+@app.post("/extract", response_model=AnalysisResponse)
+async def extract_only(request: URLRequest):
+    """Extract transcript from video URL without CrewAI analysis."""
     try:
-        # Download audio
-        audio_file = download_audio(url)
-        
-        # Schedule deletion of file after the request is done
-        background_tasks.add_task(cleanup, audio_file)
-
-        # Transcribe using Whisper
-        result = model.transcribe(audio_file)
-        
-        # Save transcript to file
-        file_path = save_transcript("ai_whisper", url, result['text'].strip())
-        
-        return {
-            "source": "ai_whisper",
-            "url": url,
-            "transcript": result['text'].strip(),
-            "saved_to": file_path
-        }
-
+        result = extract_transcript(request.url)
+        return AnalysisResponse(
+            source=result['source'],
+            video_id=result.get('video_id'),
+            transcript=result['transcript'],
+            saved_to=result.get('saved_to')
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Extraction failed: {str(e)}")
+
+
+@app.post("/analyze")
+async def analyze_transcript(request: TranscriptRequest):
+    """Analyze a transcript using the Transcript Crew."""
+    try:
+        # Create output directory
+        os.makedirs('output', exist_ok=True)
+        
+        inputs = {'transcript': request.transcript}
+        
+        # Run the crew
+        result = TranscriptCrew().crew().kickoff(inputs=inputs)
+        
+        return JSONResponse(content={
+            "analysis": result.raw,
+            "report_saved_to": "output/report.md"
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
+@app.post("/process")
+async def full_pipeline(request: URLRequest, background_tasks: BackgroundTasks):
+    """Full pipeline: Extract transcript + CrewAI analysis."""
+    try:
+        # Step 1: Extract transcript
+        extraction = extract_transcript(request.url)
+        
+        # Step 2: Run CrewAI analysis
+        os.makedirs('output', exist_ok=True)
+        inputs = {'transcript': extraction['transcript']}
+        crew_result = TranscriptCrew().crew().kickoff(inputs=inputs)
+        
+        return JSONResponse(content={
+            "source": extraction['source'],
+            "video_id": extraction.get('video_id'),
+            "transcript_saved_to": extraction.get('saved_to'),
+            "transcript_preview": extraction['transcript'][:500] + "..." if len(extraction['transcript']) > 500 else extraction['transcript'],
+            "analysis": crew_result.raw,
+            "report_saved_to": "output/report.md"
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Video Transcript Extractor with CrewAI",
+        "endpoints": {
+            "/extract": "Extract transcript from URL",
+            "/analyze": "Analyze transcript with CrewAI",
+            "/process": "Full pipeline: extract + analyze"
+        }
+    }
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,0 +1,87 @@
+# Task configurations for Transcript Crew
+
+topic_extraction_task:
+  description: >
+    Analyze the following transcript and extract all main health-related topics.
+    
+    TRANSCRIPT:
+    {transcript}
+    
+    Your task:
+    1. Identify ALL health topics discussed (diseases, conditions, treatments, etc.)
+    2. List technologies mentioned (devices, apps, medical equipment, etc.)
+    3. Note biological mechanisms discussed (hormones, cellular processes, etc.)
+    4. Categorize supplements, medications, or interventions mentioned
+    5. Identify lifestyle factors (diet, exercise, sleep, stress, etc.)
+    
+    Be thorough and comprehensive. Don't miss any topics, even minor ones.
+  expected_output: >
+    A comprehensive list of extracted topics organized by category:
+    - Health Conditions & Diseases
+    - Medical Technologies & Devices  
+    - Biological Mechanisms & Processes
+    - Supplements & Interventions
+    - Lifestyle Factors
+    
+    Each topic should have a brief description of its relevance in the transcript.
+  agent: topic_extractor
+
+insight_extraction_task:
+  description: >
+    Extract actionable insights and key findings from the transcript.
+    
+    TRANSCRIPT:
+    {transcript}
+    
+    Your task:
+    1. Identify key recommendations made by speakers
+    2. Extract actionable health advice
+    3. Note important findings or discoveries mentioned
+    4. Capture dosages, protocols, or specific instructions given
+    5. Distinguish between evidence-based claims and opinions
+    6. Highlight any warnings or contraindications mentioned
+    
+    Focus on practical, actionable information that readers can apply.
+  expected_output: >
+    A structured list of insights including:
+    - Key Recommendations (with rationale if provided)
+    - Actionable Advice (practical steps)
+    - Important Findings (discoveries, research results)
+    - Protocols & Dosages (specific regimens mentioned)
+    - Warnings & Contraindications (safety information)
+    
+    For each insight, note whether it's evidence-based or anecdotal.
+  agent: insight_extractor
+  context:
+    - topic_extraction_task
+
+structure_report_task:
+  description: >
+    Create a comprehensive, well-structured report from the extracted topics 
+    and insights.
+    
+    Using the topic extraction and insight extraction results, create a 
+    professional report that includes:
+    
+    1. Executive Summary - Brief overview of the content
+    2. Topics Covered - Detailed sections for each main topic
+    3. Key Insights - Actionable findings and recommendations
+    4. Protocols & Recommendations - Specific actionable items
+    5. Summary & Conclusions - Wrap-up of main takeaways
+    
+    The report should be well-formatted with clear headings, bullet points, 
+    and organized sections. Make it professional yet accessible.
+  expected_output: >
+    A complete markdown report with:
+    - Title and executive summary
+    - Organized sections for each topic area
+    - Clear presentation of insights and recommendations
+    - Proper formatting with headers, lists, and emphasis
+    - Professional tone suitable for health content
+    
+    The report should be comprehensive yet easy to read and navigate.
+  agent: structure_specialist
+  context:
+    - topic_extraction_task
+    - insight_extraction_task
+  output_file: output/report.md
